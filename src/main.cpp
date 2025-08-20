@@ -6,16 +6,16 @@
 
 const char* ssid = "Deke";
 const char* password = "tgyo3978";
-const char* FIRMWARE_VERSION = "1.0.3"; 
+const char* FIRMWARE_VERSION = "1.0.4"; 
 const char* versionFileUrl   = "http://deke1604.github.io/Raw2/version.txt";
-const char* firmwareURL      = "https://raw.githubusercontent.com/deke1604/<Raw2/main/firmware.bin";
+const char* firmwareURL      = "https://raw.githubusercontent.com/deke1604/Raw2/main/firmware.bin";
 
 WebServer server(80);
 
 const char* host = "esp32";
 
 unsigned long previousMillis = 0;
-const long interval = 10000; // blink interval (1 sec)
+const long interval = 500; // blink interval (1 sec)
 bool ledState = LOW;
 const int led = 2; 
 
@@ -96,11 +96,11 @@ void connectToWiFi() {
 // Perform OTA update check (GitHub-hosted firmware)
 void performOTA() {
   HTTPClient http;
-  http.setTimeout(5000); // prevent blocking too long
+  http.setTimeout(1000); // prevent blocking too long
 
   Serial.println("Checking for firmware updates...");
 
-  http.begin("https://raw.githubusercontent.com/deke1604/<Raw2/main/firmware.bin");
+  http.begin("https://raw.githubusercontent.com/deke1604/Raw2/main/firmware.bin");
   int httpCode = http.GET();
 
   if (httpCode == HTTP_CODE_OK) {

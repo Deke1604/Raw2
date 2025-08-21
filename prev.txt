@@ -1,0 +1,70 @@
+void performOTA() {
+  HTTPClient http;
+  http.setTimeout(1000); // prevent blocking too long
+
+  Serial.println("Checking for firmware updates...");
+
+  http.begin("https://github.com/Deke1604/Raw2/raw/main/firmware.bin");
+  int httpCode = http.GET();
+
+  if (httpCode == HTTP_CODE_OK) {
+    int contentLength = http.getSize();
+    WiFiClient* stream = http.getStreamPtr();
+
+    if (contentLength > 0 && Update.begin(contentLength)) {
+      Serial.println("Downloading update...");
+      size_t written = Update.writeStream(*stream);
+      if (written == contentLength && Update.end()) {
+        Serial.println("✅ OTA Update successful! Rebooting...");
+        ESP.restart();
+      } else {
+        Update.printError(Serial);
+      }
+    }
+  } else {
+    Serial.printf("Update check failed, HTTP code: %d\n", httpCode);
+  }
+  http.end();
+}
+
+void setup(void) {
+  pinMode(led, OUTPUT);
+  Serial.begin(115200);
+
+  connectToWiFi();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    performOTA();
+  }
+
+  if (!MDNS.begin(host)) {
+    Serial.println("Error setting up MDNS responder!");
+  } else {
+    Serial.println("mDNS responder started");
+  }
+
+  // Web server endpoints
+  server.on("/", HTTP_GET, []() {
+    server.send(200, "text/html", loginIndex);
+  });
+  server.on("/serverIndex", HTTP_GET, []() {
+    server.send(200, "text/html", serverIndex);
+  });
+  server.on("/update", HTTP_POST, []() {
+    server.send((Update.hasError()) ? 500 : 200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
+    ESP.restart();
+  }, []() {
+    HTTPUpload& upload = server.upload();
+    if (upload.status == UPLOAD_FILE_START) {
+      if (!Update.begin(UPDATE_SIZE_UNKNOWN)) Update.printError(Serial);
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+      if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) Update.printError(Serial);
+    } else if (upload.status == UPLOAD_FILE_END) {
+      if (Update.end(true)) {
+        Serial.printf("Update Success: %u bytes\nRebooting...\n", upload.totalSize);
+      } else Update.printError(Serial);
+    }
+  });
+
+  server.begin();
+}

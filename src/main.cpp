@@ -6,8 +6,8 @@
 
 const char* ssid = "Deke";
 const char* password = "tgyo3978";
-// const char* FIRMWARE_VERSION = "1.0.2"; 
-// const char* versionFileUrl   = "http://deke1604.github.io/Raw2/version.txt";
+const char* FIRMWARE_VERSION = "1.0.0"; 
+const char* versionFileUrl   = "https://raw.githubusercontent.com/Deke1604/Raw/refs/heads/main/version.txt";
 const char* firmwareURL      = "https://github.com/Deke1604/Raw2/raw/main/firmware.bin";
 
 WebServer server(80);
@@ -15,7 +15,7 @@ WebServer server(80);
 const char* host = "esp32";
 
 unsigned long previousMillis = 0;
-const long interval = 500; // blink interval (1 sec)
+const long interval = 10000; // blink interval (1 sec)
 bool ledState = LOW;
 const int led = 2; 
 
@@ -96,39 +96,74 @@ void connectToWiFi() {
 // Perform OTA update check (GitHub-hosted firmware)
 void performOTA() {
   HTTPClient http;
-  http.setTimeout(1000); // prevent blocking too long
+  http.setTimeout(1000); 
 
   Serial.println("Checking for firmware updates...");
 
-  http.begin("https://github.com/Deke1604/Raw2/raw/main/firmware.bin");
+  http.begin(versionFileUrl);
   int httpCode = http.GET();
 
-  if (httpCode == HTTP_CODE_OK) {
-    int contentLength = http.getSize();
-    WiFiClient* stream = http.getStreamPtr();
+  if (httpCode == 200) {
+    String serverVersion = http.getString();
+    serverVersion.trim();
+    Serial.printf("Current: %s | Server: %s\n", FIRMWARE_VERSION, serverVersion.c_str());
 
-    if (contentLength > 0 && Update.begin(contentLength)) {
-      Serial.println("Downloading update...");
-      size_t written = Update.writeStream(*stream);
-      if (written == contentLength && Update.end()) {
-        Serial.println("✅ OTA Update successful! Rebooting...");
-        ESP.restart();
+    if (serverVersion != FIRMWARE_VERSION) {
+      Serial.println("New firmware available! Starting OTA...");
+      http.end();
+
+      http.begin(firmwareURL);
+      int resp = http.GET();
+      if (resp == 200) {
+        int contentLength = http.getSize();
+        WiFiClient * stream = http.getStreamPtr();
+
+        if (Update.begin(contentLength)) {
+          size_t written = Update.writeStream(*stream);
+          if (written == contentLength) {
+            Serial.println("OTA written successfully. Rebooting...");
+            if (Update.end(true)) {
+              ESP.restart();
+            } else {
+              Serial.printf("Update.end() failed. Error: %s\n", Update.errorString());
+            }
+          } else {
+            Serial.printf("Written only %d/%d bytes. OTA failed!\n", written, contentLength);
+          }
+        } else {
+          Serial.println("Not enough space for OTA.");
+        }
       } else {
-        Update.printError(Serial);
+        Serial.printf("Failed to fetch firmware. HTTP code: %d\n", resp);
       }
+    } else {
+      Serial.println("Already up-to-date.");
     }
   } else {
-    Serial.printf("Update check failed, HTTP code: %d\n", httpCode);
+    Serial.printf("Failed to fetch version file. HTTP code: %d\n", httpCode);
   }
   http.end();
 }
+
+  // http.begin("https://github.com/Deke1604/Raw/raw/main/firmware.bin");
+  
 
 void setup(void) {
   pinMode(led, OUTPUT);
   Serial.begin(115200);
 
   connectToWiFi();
-
+  /*
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected.");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+*/
   if (WiFi.status() == WL_CONNECTED) {
     performOTA();
   }
@@ -141,24 +176,34 @@ void setup(void) {
 
   // Web server endpoints
   server.on("/", HTTP_GET, []() {
+    server.sendHeader("Connection", "close");
     server.send(200, "text/html", loginIndex);
   });
   server.on("/serverIndex", HTTP_GET, []() {
+    server.sendHeader("Connection", "close");
     server.send(200, "text/html", serverIndex);
   });
   server.on("/update", HTTP_POST, []() {
+    server.sendHeader("Connection", "close");
     server.send((Update.hasError()) ? 500 : 200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
     ESP.restart();
   }, []() {
     HTTPUpload& upload = server.upload();
     if (upload.status == UPLOAD_FILE_START) {
-      if (!Update.begin(UPDATE_SIZE_UNKNOWN)) Update.printError(Serial);
+      Serial.printf("Update: %s\n", upload.filename.c_str());
+      if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+        Update.printError(Serial);
+      }
     } else if (upload.status == UPLOAD_FILE_WRITE) {
-      if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) Update.printError(Serial);
+      if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+        Update.printError(Serial);
+      }
     } else if (upload.status == UPLOAD_FILE_END) {
       if (Update.end(true)) {
         Serial.printf("Update Success: %u bytes\nRebooting...\n", upload.totalSize);
-      } else Update.printError(Serial);
+      } else {
+        Update.printError(Serial);
+      }
     }
   });
 

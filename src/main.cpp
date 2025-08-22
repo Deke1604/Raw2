@@ -6,7 +6,7 @@
 
 const char* ssid = "Deke";
 const char* password = "tgyo3978";
-const char* FIRMWARE_VERSION = "1.0.5"; 
+const char* FIRMWARE_VERSION = "1.0.6"; 
 const char* versionFileUrl   = "https://raw.githubusercontent.com/Deke1604/Raw2/refs/heads/main/version.txt";
 const char* firmwareURL      = "https://github.com/Deke1604/Raw2/raw/main/firmware.bin";
 
@@ -14,6 +14,7 @@ WebServer server(80);
 
 const char* host = "esp32";
 
+unsigned long time2Update = 0;
 unsigned long time2Update_check = 60000;
 
 unsigned long previousMillis = 0;
@@ -227,8 +228,8 @@ void setup(void) {
 void loop() {
   server.handleClient();
   unsigned long currentMillis = millis();
-  if (currentMillis - time2Update_check >= interval) {
-    time2Update_check = currentMillis;
+  if (currentMillis - time2Update >= time2Update_check) {
+    time2Update = currentMillis;
     performOTA(); 
   }
 

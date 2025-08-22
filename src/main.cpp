@@ -6,7 +6,7 @@
 
 const char* ssid = "Deke";
 const char* password = "tgyo3978";
-const char* FIRMWARE_VERSION = "1.0.6"; 
+const char* FIRMWARE_VERSION = "1.0.7"; 
 const char* versionFileUrl   = "https://raw.githubusercontent.com/Deke1604/Raw2/refs/heads/main/version.txt";
 const char* firmwareURL      = "https://github.com/Deke1604/Raw2/raw/main/firmware.bin";
 
@@ -18,7 +18,7 @@ unsigned long time2Update = 0;
 unsigned long time2Update_check = 60000;
 
 unsigned long previousMillis = 0;
-const long interval = 1000; // blink interval (1 sec)
+const long interval = 10000; // blink interval (1 sec)
 bool ledState = LOW;
 const int led = 2; 
 

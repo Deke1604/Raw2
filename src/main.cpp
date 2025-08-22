@@ -6,7 +6,7 @@
 
 const char* ssid = "Deke";
 const char* password = "tgyo3978";
-const char* FIRMWARE_VERSION = "1.0.4"; 
+const char* FIRMWARE_VERSION = "1.0.5"; 
 const char* versionFileUrl   = "https://raw.githubusercontent.com/Deke1604/Raw2/refs/heads/main/version.txt";
 const char* firmwareURL      = "https://github.com/Deke1604/Raw2/raw/main/firmware.bin";
 
@@ -14,8 +14,10 @@ WebServer server(80);
 
 const char* host = "esp32";
 
+unsigned long time2Update_check = 60000;
+
 unsigned long previousMillis = 0;
-const long interval = 500; // blink interval (1 sec)
+const long interval = 1000; // blink interval (1 sec)
 bool ledState = LOW;
 const int led = 2; 
 
@@ -94,56 +96,66 @@ void connectToWiFi() {
 }
 
 // Perform OTA update check (GitHub-hosted firmware)
+
 void performOTA() {
-  HTTPClient http;
-  http.setTimeout(1000); 
 
-  Serial.println("Checking for firmware updates...");
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi not connected. Attempting to reconnect...");
+    connectToWiFi();
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("Starting OTA update check...");
+    HTTPClient http;
+    http.setTimeout(1000); 
 
-  http.begin(versionFileUrl);
-  int httpCode = http.GET();
+    Serial.println("Checking for firmware updates...");
 
-  if (httpCode == 200) {
-    String serverVersion = http.getString();
-    serverVersion.trim();
-    Serial.printf("Current: %s | Server: %s\n", FIRMWARE_VERSION, serverVersion.c_str());
+    http.begin(versionFileUrl);
+    int httpCode = http.GET();
 
-    if (serverVersion != FIRMWARE_VERSION) {
-      Serial.println("New firmware available! Starting OTA...");
-      http.end();
+    if (httpCode == 200) {
+      String serverVersion = http.getString();
+      serverVersion.trim();
+      Serial.printf("Current: %s | Server: %s\n", FIRMWARE_VERSION, serverVersion.c_str());
 
-      http.begin(firmwareURL);
-      http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-      int resp = http.GET();
-      if (resp == 200) {
-        int contentLength = http.getSize();
-        WiFiClient * stream = http.getStreamPtr();
+      if (serverVersion != FIRMWARE_VERSION) {
+        Serial.println("New firmware available! Starting OTA...");
+        http.end();
 
-        if (Update.begin(contentLength)) {
-          size_t written = Update.writeStream(*stream);
-          if (written == contentLength) {
-            Serial.println("OTA written successfully. Rebooting...");
-            if (Update.end(true)) {
-              ESP.restart();
+        http.begin(firmwareURL);
+        http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+        int resp = http.GET();
+        if (resp == 200) {
+          int contentLength = http.getSize();
+          WiFiClient * stream = http.getStreamPtr();
+
+          if (Update.begin(contentLength)) {
+            size_t written = Update.writeStream(*stream);
+            if (written == contentLength) {
+              Serial.println("OTA written successfully. Rebooting...");
+              if (Update.end(true)) {
+                ESP.restart();
+              } else {
+                Serial.printf("Update.end() failed. Error: %s\n", Update.errorString());
+              }
             } else {
-              Serial.printf("Update.end() failed. Error: %s\n", Update.errorString());
+              Serial.printf("Written only %d/%d bytes. OTA failed!\n", written, contentLength);
             }
           } else {
-            Serial.printf("Written only %d/%d bytes. OTA failed!\n", written, contentLength);
+            Serial.println("Not enough space for OTA.");
           }
         } else {
-          Serial.println("Not enough space for OTA.");
+          Serial.printf("Failed to fetch firmware. HTTP code: %d\n", resp);
         }
       } else {
-        Serial.printf("Failed to fetch firmware. HTTP code: %d\n", resp);
+        Serial.println("Already up-to-date.");
       }
     } else {
-      Serial.println("Already up-to-date.");
+      Serial.printf("Failed to fetch version file. HTTP code: %d\n", httpCode);
     }
-  } else {
-    Serial.printf("Failed to fetch version file. HTTP code: %d\n", httpCode);
+    http.end();
   }
-  http.end();
 }
 
   // http.begin("https://github.com/Deke1604/Raw/raw/main/firmware.bin");
@@ -153,7 +165,7 @@ void setup(void) {
   pinMode(led, OUTPUT);
   Serial.begin(115200);
 
-  connectToWiFi();
+  // connectToWiFi();
   /*
   WiFi.begin(ssid, password);
   Serial.print("Connecting to WiFi");
@@ -165,9 +177,10 @@ void setup(void) {
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 */
-  if (WiFi.status() == WL_CONNECTED) {
+  // if (WiFi.status() == WL_CONNECTED) {
+
     performOTA();
-  }
+  // }
 
   if (!MDNS.begin(host)) {
     Serial.println("Error setting up MDNS responder!");
@@ -214,9 +227,16 @@ void setup(void) {
 void loop() {
   server.handleClient();
   unsigned long currentMillis = millis();
+  if (currentMillis - time2Update_check >= interval) {
+    time2Update_check = currentMillis;
+    performOTA(); 
+  }
+
+  currentMillis = millis();
   if (currentMillis - previousMillis >= interval) {
     previousMillis = currentMillis;
     ledState = !ledState;
     digitalWrite(led, ledState);
   }
+
 }
